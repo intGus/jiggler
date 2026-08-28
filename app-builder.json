@@ -14,7 +14,7 @@
     ],
     "icon": "assets/images/jiggler.png",
     "license": "MIT",
-    "source_repo": "TODO: fill in once this app has a public repository",
+    "source_repo": "https://github.com/intGus/jiggler",
     "author": { "github": "intGus", "display_name": "intGus" },
     "share_code": "TODO",
     "permissions": {
