@@ -31,11 +31,14 @@ public:
 
     JigglerMode jiggler_mode() const;
     void cycle_jiggler_mode();
+    void set_jiggler_mode(JigglerMode mode);
 
     int interval_min_seconds() const;
     int interval_max_seconds() const;
     void increase_interval();
     void decrease_interval();
+    // Restores a saved window start; the max keeps the same spread. Out-of-range values are ignored.
+    bool set_interval_min_seconds(int seconds);
 
     int moves_sent() const;
     void increment_moves_sent();
@@ -47,7 +50,7 @@ public:
 private:
     bool dark_mode_ = false;
     bool jiggling_active_ = false;
-    JigglerMode jiggler_mode_ = JigglerMode::Both;
+    JigglerMode jiggler_mode_ = JigglerMode::Mouse;
     int interval_min_seconds_ = 5;
     int interval_max_seconds_ = 15;
     int moves_sent_ = 0;

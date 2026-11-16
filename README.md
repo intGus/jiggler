@@ -56,14 +56,15 @@ Everything is keyboard-driven, no touch required:
 | Key | Action |
 | --- | --- |
 | `4` | Start / stop jiggling |
-| `5` | Cycle output mode: Mouse -> Keyboard -> Mouse + Keyboard |
+| `5` | Cycle output mode: Mouse (default) -> Keyboard -> Mouse + Keyboard |
 | `6` | Decrease the randomized interval window (both bounds, -1s) |
 | `7` | Increase the randomized interval window (both bounds, +1s) |
 | `8` | Toggle an info panel explaining the current output backend |
 | `ESC` / `HOME` (hold) | Exit |
 
 The interval is a randomized window (default 5s-15s) rather than a fixed period, so activity looks less
-mechanical. The on-screen status line always shows what actually happened on the last jiggle and why, per
+mechanical. The last-used mode and interval are saved and restored the next time the app opens.
+Keyboard mode only taps Left Shift, so nothing is ever typed on the host. The on-screen status line always shows what actually happened on the last jiggle and why, per
 the project's "never claim hardware success that didn't happen" rule (see below).
 
 ## Hardware Status
@@ -75,17 +76,19 @@ the project's "never claim hardware success that didn't happen" rule (see below)
   boot-protocol reports directly to `/dev/hidg0` (keyboard, modifier-only pulse so nothing is actually
   typed) and `/dev/hidg1` (mouse, small relative move). This assumes the OS has already put the port in
   Slave/Device mode and bound a composite HID gadget exposing those nodes - the app itself never runs as
-  root; the gadget is created at boot by the packaged `cp0-hid-gadget.service` (below). If the nodes
+  root; the gadget is created at boot by the packaged `jiggler-hid-gadget.service` (below). If the nodes
   are missing or not writable, the app reports that explicitly instead of pretending the jiggle worked.
 - **Tested on a real CardputerZero (2026-11-16)** against Windows and macOS hosts: the mouse jiggle
   moves the host pointer (12-24 px, then back) and the PC enumerates the device as a composite
   keyboard + mouse. Only the **right-side USB port** works as a device port, with the USB switch set
   to **Device**; that port also charges the Cardputer. The app shows this reminder for 6 s at start.
 - **Gadget setup** lives in `tools/`: `setup-hid-gadget.sh` creates `/dev/hidg0` (keyboard) and
-  `/dev/hidg1` (mouse) through ConfigFS and hands them to the app user; `cp0-hid-gadget.service` runs
+  `/dev/hidg1` (mouse) through ConfigFS and hands them to the app user; `jiggler-hid-gadget.service` runs
   it at boot. The `.deb` installs both (`/usr/lib/jiggler/`, `/usr/lib/systemd/system/`) and its
-  `postinst` enables the service, so nothing has to be set up by hand. The device nodes are given to
-  group `plugdev` (mode 0660), which the default CardputerZero user belongs to.
+  `postinst` enables the service, so nothing has to be set up by hand. The service does not run as root:
+  it uses a systemd `DynamicUser` with only `CAP_DAC_OVERRIDE` (ConfigFS is root-owned). The udev rule
+  `/usr/lib/udev/rules.d/60-jiggler.rules` gives `/dev/hidg*` to group `plugdev` (mode 0660), which the
+  default CardputerZero user belongs to.
 - **Screen off while jiggling:** after 30 s without a key press the backlight turns off
   (`/sys/class/backlight/backlight/brightness`, writable by the `video` group). Any key turns it back
   on; that key press is swallowed so it never triggers its action. Brightness is restored on exit.
@@ -181,9 +184,14 @@ Theme startup behavior is configured in `config/jiggler-app.conf`:
 ```ini
 [application]
 dark_mode=no
+# written by the app when you change them:
+mode=mouse          # mouse | keyboard | both
+interval_min=5      # window start in seconds; the window keeps its 10 s spread
 ```
 
-Set `dark_mode` to `yes` or `no`. The parser also accepts `true`/`false` and `1`/`0`.
+Set `dark_mode` to `yes` or `no`. The parser also accepts `true`/`false` and `1`/`0`. `mode` and
+`interval_min` are saved to the per-user file below whenever you change them on the device; invalid
+values are ignored and the defaults (mouse, 5s-15s) are used.
 Installed device builds use `/etc/jiggler-app.conf` as the system default. Unlike the upstream
 template, all five nav bar keys are used for jiggler controls (see [What It Does](#what-it-does)), so
 there is currently no in-app key to toggle the theme - edit the config file (or the per-user override

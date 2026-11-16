@@ -10,6 +10,7 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <utility>
 #include <vector>
 
 namespace app {
@@ -59,6 +60,36 @@ bool is_key(const std::string& line, const std::string& expected) {
 
 } // namespace
 
+static const char* mode_name(int mode) {
+    switch (mode) {
+        case 1: return "keyboard";
+        case 2: return "both";
+        default: return "mouse";
+    }
+}
+
+static bool parse_mode(const std::string& value, int& mode) {
+    const auto normalized = lowercase(trim(value));
+    if (normalized == "mouse") { mode = 0; return true; }
+    if (normalized == "keyboard") { mode = 1; return true; }
+    if (normalized == "both") { mode = 2; return true; }
+    return false;
+}
+
+static bool parse_int(const std::string& value, int& result) {
+    const auto normalized = trim(value);
+    if (normalized.empty() || normalized.size() > 6) {
+        return false;
+    }
+    for (const char c : normalized) {
+        if (c < '0' || c > '9') {
+            return false;
+        }
+    }
+    result = std::stoi(normalized);
+    return true;
+}
+
 bool load_application_config(const std::string& path,
                              ApplicationConfig& config,
                              std::string& error) {
@@ -85,16 +116,22 @@ bool load_application_config(const std::string& path,
         }
 
         const auto separator = line.find('=');
-        if (separator == std::string::npos) {
+        if (separator == std::string::npos || section != "application") {
             continue;
         }
 
         const auto key = lowercase(trim(line.substr(0, separator)));
-        if (section == "application" && key == "dark_mode") {
-            if (!parse_bool(line.substr(separator + 1), config.dark_mode)) {
+        const auto value = line.substr(separator + 1);
+        if (key == "dark_mode") {
+            if (!parse_bool(value, config.dark_mode)) {
                 error = "invalid dark_mode value at line " + std::to_string(line_number);
                 return false;
             }
+        } else if (key == "mode") {
+            // Bad jiggler values are skipped, not fatal: defaults still apply.
+            config.has_mode = parse_mode(value, config.mode);
+        } else if (key == "interval_min") {
+            config.has_interval_min = parse_int(value, config.interval_min_seconds);
         }
     }
 
@@ -123,44 +160,70 @@ bool save_application_config(const std::string& path,
     while (std::getline(input, line)) {
         lines.push_back(line);
     }
+    input.close();
+
+    // Keys this app owns in [application]; everything else in the file is kept.
+    std::vector<std::pair<std::string, std::string>> owned = {
+        {"dark_mode", config.dark_mode ? "dark_mode=yes" : "dark_mode=no"},
+    };
+    if (config.has_mode) {
+        owned.emplace_back("mode", std::string("mode=") + mode_name(config.mode));
+    }
+    if (config.has_interval_min) {
+        owned.emplace_back("interval_min", "interval_min=" + std::to_string(config.interval_min_seconds));
+    }
+
+    auto is_owned = [&owned](const std::string& current_line) {
+        for (const auto& entry : owned) {
+            if (is_key(current_line, entry.first)) {
+                return true;
+            }
+        }
+        return false;
+    };
 
     std::vector<std::string> updated;
     bool in_application_section = false;
     bool found_application_section = false;
-    bool wrote_dark_mode = false;
-    const std::string dark_mode_line = config.dark_mode ? "dark_mode=yes" : "dark_mode=no";
+    bool wrote_owned = false;
+    auto write_owned = [&]() {
+        for (const auto& entry : owned) {
+            updated.push_back(entry.second);
+        }
+        wrote_owned = true;
+    };
 
     for (const auto& current_line : lines) {
         const auto normalized = trim(current_line);
         const bool section_header = normalized.size() >= 2 && normalized.front() == '[' &&
                                     normalized.back() == ']';
         if (section_header) {
-            if (in_application_section && !wrote_dark_mode) {
-                updated.push_back(dark_mode_line);
-                wrote_dark_mode = true;
+            if (in_application_section && !wrote_owned) {
+                write_owned();
             }
             in_application_section = is_section(current_line, "application");
             found_application_section = found_application_section || in_application_section;
+            updated.push_back(current_line);
+            continue;
         }
 
-        if (in_application_section && is_key(current_line, "dark_mode")) {
-            if (!wrote_dark_mode) {
-                updated.push_back(dark_mode_line);
-                wrote_dark_mode = true;
-            }
-            continue;
+        if (in_application_section && is_owned(current_line)) {
+            continue; // rewritten below
         }
         updated.push_back(current_line);
     }
 
-    if (!wrote_dark_mode) {
+    if (in_application_section && !wrote_owned) {
+        write_owned();
+    }
+    if (!wrote_owned) {
         if (!updated.empty() && !updated.back().empty()) {
             updated.emplace_back();
         }
         if (!found_application_section) {
             updated.emplace_back("[application]");
         }
-        updated.push_back(dark_mode_line);
+        write_owned();
     }
 
     std::ofstream output(path, std::ios::trunc);
@@ -175,7 +238,6 @@ bool save_application_config(const std::string& path,
         error = "failed while writing file";
         return false;
     }
-
     return true;
 }
 

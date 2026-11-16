@@ -109,6 +109,17 @@ void BaseViewModel::cycle_jiggler_mode() {
     mode_subject_.set(mode_to_int(model_.jiggler_mode()));
 }
 
+void BaseViewModel::set_jiggler_mode(model::JigglerMode mode) {
+    model_.set_jiggler_mode(mode);
+    mode_subject_.set(mode_to_int(model_.jiggler_mode()));
+}
+
+void BaseViewModel::set_interval_min_seconds(int seconds) {
+    model_.set_interval_min_seconds(seconds);
+    interval_min_subject_.set(model_.interval_min_seconds());
+    interval_max_subject_.set(model_.interval_max_seconds());
+}
+
 void BaseViewModel::increase_interval() {
     model_.increase_interval();
     interval_min_subject_.set(model_.interval_min_seconds());

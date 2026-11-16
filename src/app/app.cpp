@@ -64,9 +64,13 @@ void quit_requested_observer(lv_observer_t* observer, lv_subject_t* subject) {
     }
 }
 
-struct DarkModePersistence {
+// Saves dark mode plus the last-used jiggler mode and interval whenever one of
+// them changes, so the app reopens with the same settings.
+struct SettingsPersistence {
     std::string config_path;
-    bool last_dark_mode;
+    viewmodel::BaseViewModel* view_model;
+    ApplicationConfig last;
+    bool ready = false; // skip the initial observer callbacks fired on registration
 };
 
 std::string writable_config_path() {
@@ -89,24 +93,35 @@ std::string writable_config_path() {
 #endif
 }
 
-void persist_dark_mode_observer(lv_observer_t* observer, lv_subject_t* subject) {
-    auto* persistence = static_cast<DarkModePersistence*>(lv_observer_get_user_data(observer));
-    if (!persistence) {
-        return;
-    }
-    const bool dark_mode = lv_subject_get_int(subject) != 0;
-    if (dark_mode == persistence->last_dark_mode) {
-        return;
-    }
-    persistence->last_dark_mode = dark_mode;
-
+ApplicationConfig current_settings(const viewmodel::BaseViewModel& view_model) {
     ApplicationConfig config;
-    config.dark_mode = dark_mode;
+    config.dark_mode = view_model.is_dark_mode();
+    config.has_mode = true;
+    config.mode = static_cast<int>(view_model.jiggler_mode());
+    config.has_interval_min = true;
+    config.interval_min_seconds = view_model.interval_min_seconds();
+    return config;
+}
+
+void persist_settings_observer(lv_observer_t* observer, lv_subject_t*) {
+    auto* persistence = static_cast<SettingsPersistence*>(lv_observer_get_user_data(observer));
+    if (!persistence || !persistence->ready || !persistence->view_model) {
+        return;
+    }
+    const auto config = current_settings(*persistence->view_model);
+    if (config.dark_mode == persistence->last.dark_mode && config.mode == persistence->last.mode &&
+        config.interval_min_seconds == persistence->last.interval_min_seconds) {
+        return;
+    }
+    persistence->last = config;
+
     std::string error;
     if (save_application_config(persistence->config_path, config, error)) {
-        LOG_INFO("saved config: {} (dark_mode={})",
+        LOG_INFO("saved config: {} (dark_mode={}, mode={}, interval_min={})",
                  persistence->config_path,
-                 config.dark_mode ? "yes" : "no");
+                 config.dark_mode ? "yes" : "no",
+                 config.mode,
+                 config.interval_min_seconds);
     } else {
         LOG_WARN("failed to save config {}: {}", persistence->config_path, error);
     }
@@ -388,9 +403,17 @@ int Application::run() {
     std::string config_error;
     if (load_application_config(loaded_config_path, config, config_error)) {
         view_model.set_dark_mode(config.dark_mode);
-        LOG_INFO("loaded config: {} (dark_mode={})",
+        if (config.has_mode && config.mode >= 0 && config.mode <= 2) {
+            view_model.set_jiggler_mode(static_cast<model::JigglerMode>(config.mode));
+        }
+        if (config.has_interval_min) {
+            view_model.set_interval_min_seconds(config.interval_min_seconds);
+        }
+        LOG_INFO("loaded config: {} (dark_mode={}, mode={}, interval_min={})",
                  loaded_config_path,
-                 config.dark_mode ? "yes" : "no");
+                 config.dark_mode ? "yes" : "no",
+                 static_cast<int>(view_model.jiggler_mode()),
+                 view_model.interval_min_seconds());
     } else {
         LOG_WARN("failed to load config {}: {}; using defaults", loaded_config_path, config_error);
     }
@@ -420,10 +443,17 @@ int Application::run() {
     ShortcutController shortcuts(view_model, assets);
     JigglerController jiggler_controller(view_model);
 
-    DarkModePersistence dark_mode_persistence{user_config_path, view_model.is_dark_mode()};
+    SettingsPersistence settings_persistence{user_config_path, &view_model, current_settings(view_model)};
     auto* dark_mode_observer = lv_subject_add_observer(view_model.dark_mode_subject(),
-                                                        persist_dark_mode_observer,
-                                                        &dark_mode_persistence);
+                                                        persist_settings_observer,
+                                                        &settings_persistence);
+    auto* mode_observer = lv_subject_add_observer(view_model.mode_subject(),
+                                                  persist_settings_observer,
+                                                  &settings_persistence);
+    auto* interval_observer = lv_subject_add_observer(view_model.interval_min_subject(),
+                                                      persist_settings_observer,
+                                                      &settings_persistence);
+    settings_persistence.ready = true;
 
     bool running = true;
     auto* quit_observer = lv_subject_add_observer(view_model.quit_requested_subject(),
@@ -452,6 +482,12 @@ int Application::run() {
     }
     if (dark_mode_observer) {
         lv_observer_remove(dark_mode_observer);
+    }
+    if (mode_observer) {
+        lv_observer_remove(mode_observer);
+    }
+    if (interval_observer) {
+        lv_observer_remove(interval_observer);
     }
 
     return 0;

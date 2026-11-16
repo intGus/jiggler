@@ -1,0 +1,20 @@
+[Unit]
+Description=Jiggler USB keyboard+mouse gadget (CardputerZero)
+After=sys-kernel-config.mount systemd-modules-load.service
+Wants=sys-kernel-config.mount
+ConditionPathIsDirectory=/sys/kernel/config/usb_gadget
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Not root: a throwaway system user with one capability, needed only because
+# /sys/kernel/config/usb_gadget is root-owned. /dev/hidg* permissions come from
+# 60-jiggler.rules (udev), so no chown is needed here.
+DynamicUser=yes
+AmbientCapabilities=CAP_DAC_OVERRIDE
+CapabilityBoundingSet=CAP_DAC_OVERRIDE
+ExecStart=/usr/lib/jiggler/setup-hid-gadget.sh
+ExecStop=/usr/lib/jiggler/setup-hid-gadget.sh --remove
+
+[Install]
+WantedBy=multi-user.target

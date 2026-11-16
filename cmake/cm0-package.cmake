@@ -14,7 +14,7 @@ set(APP_DEBIAN_ARCHITECTURE "arm64" CACHE STRING "Debian package architecture")
 set(APP_MAINTAINER "intGus <intgusd@gmail.com>" CACHE STRING "Debian package maintainer")
 set(APP_PACKAGE_DESCRIPTION "USB HID activity jiggler for CardputerZero" CACHE STRING "Debian package summary")
 # Jiggler itself is a foreground GUI app launched from APPLaunch, so the app
-# has no autostart service. The package does ship cp0-hid-gadget.service, a
+# has no autostart service. The package does ship jiggler-hid-gadget.service, a
 # boot-time oneshot that creates the USB HID gadget (see below); that is why
 # app-builder.json declares store.permissions.background_service = true.
 set(APP_INSTALL_SYSTEMD_SERVICE OFF CACHE BOOL "Install a systemd service file for embedded deployments")
@@ -74,8 +74,11 @@ endif()
 install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/tools/setup-hid-gadget.sh"
     DESTINATION "lib/jiggler"
 )
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/tools/cp0-hid-gadget.service"
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/tools/jiggler-hid-gadget.service"
     DESTINATION "lib/systemd/system"
+)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/tools/60-jiggler.rules"
+    DESTINATION "lib/udev/rules.d"
 )
 
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/README.md"

@@ -73,6 +73,20 @@ void BaseModel::cycle_jiggler_mode() {
     jiggler_mode_ = next_jiggler_mode(jiggler_mode_);
 }
 
+void BaseModel::set_jiggler_mode(JigglerMode mode) {
+    jiggler_mode_ = mode;
+}
+
+bool BaseModel::set_interval_min_seconds(int seconds) {
+    const int spread = interval_max_seconds_ - interval_min_seconds_;
+    if (seconds < kIntervalFloorSeconds || seconds + spread > kIntervalCeilingSeconds) {
+        return false;
+    }
+    interval_min_seconds_ = seconds;
+    interval_max_seconds_ = seconds + spread;
+    return true;
+}
+
 int BaseModel::interval_min_seconds() const {
     return interval_min_seconds_;
 }

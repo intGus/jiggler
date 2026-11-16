@@ -4,13 +4,12 @@
 #   /dev/hidg0  boot keyboard, 8-byte reports  [mod, 0, k0..k5]
 #   /dev/hidg1  boot mouse,    4-byte reports  [buttons, dx, dy, wheel]
 # Matches src/platform/jiggle_output.cpp. Installed by the .deb and run at boot by
-# cp0-hid-gadget.service. Manual run as root:  sudo ./setup-hid-gadget.sh
+# jiggler-hid-gadget.service (non-root, CAP_DAC_OVERRIDE only). /dev/hidg* permissions
+# come from udev rule 60-jiggler.rules. Manual run:  sudo ./setup-hid-gadget.sh
 # Undo:  sudo ./setup-hid-gadget.sh --remove
 set -euo pipefail
 
 G=/sys/kernel/config/usb_gadget/cp0hid
-# Device nodes go to APP_USER if set, else to group plugdev (default desktop user group).
-APP_USER="${APP_USER:-${SUDO_USER:-}}"
 
 remove() {
   [ -d "$G" ] || { echo "no gadget to remove"; return; }
@@ -23,10 +22,9 @@ remove() {
 }
 
 if [ "${1:-}" = "--remove" ]; then remove; exit 0; fi
-[ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
-
-modprobe libcomposite
-modprobe usb_f_hid 2>/dev/null || true
+# Normally already loaded by the OS; usb_f_hid is auto-loaded by the kernel when
+# the hid functions are created. Loading needs root, so failure is not fatal.
+modprobe libcomposite 2>/dev/null || true
 [ -d "$G" ] && remove
 
 mkdir -p "$G"
@@ -64,10 +62,8 @@ ln -s functions/hid.usb1 configs/c.1/
 
 ls /sys/class/udc | head -n1 > UDC
 
-# Let the app (running as a normal user) write the reports.
+# udev (60-jiggler.rules) gives the nodes to group plugdev; just wait for them.
 for i in 0 1; do
   for _ in $(seq 20); do [ -e /dev/hidg$i ] && break; sleep 0.1; done
-  if [ -n "$APP_USER" ]; then chown "$APP_USER" /dev/hidg$i; else chgrp plugdev /dev/hidg$i; fi
-  chmod 0660 /dev/hidg$i
 done
 echo "gadget up on $(cat UDC):"; ls -l /dev/hidg*

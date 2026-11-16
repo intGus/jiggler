@@ -46,6 +46,8 @@ public:
     // observes active_subject()/status_subject() from src/app.
     void toggle_jiggling();
     void cycle_jiggler_mode();
+    void set_jiggler_mode(model::JigglerMode mode);
+    void set_interval_min_seconds(int seconds);
     void increase_interval();
     void decrease_interval();
     void toggle_info();

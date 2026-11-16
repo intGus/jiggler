@@ -1,0 +1,2 @@
+# Jiggler: let the desktop user (group plugdev) write USB HID gadget reports.
+KERNEL=="hidg[0-9]*", GROUP="plugdev", MODE="0660"
