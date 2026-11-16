@@ -3,12 +3,14 @@
 # Creates a composite gadget with:
 #   /dev/hidg0  boot keyboard, 8-byte reports  [mod, 0, k0..k5]
 #   /dev/hidg1  boot mouse,    4-byte reports  [buttons, dx, dy, wheel]
-# Matches src/platform/jiggle_output.cpp. Run as root:  sudo ./setup-hid-gadget.sh
+# Matches src/platform/jiggle_output.cpp. Installed by the .deb and run at boot by
+# cp0-hid-gadget.service. Manual run as root:  sudo ./setup-hid-gadget.sh
 # Undo:  sudo ./setup-hid-gadget.sh --remove
 set -euo pipefail
 
 G=/sys/kernel/config/usb_gadget/cp0hid
-APP_USER="${APP_USER:-${SUDO_USER:-root}}"
+# Device nodes go to APP_USER if set, else to group plugdev (default desktop user group).
+APP_USER="${APP_USER:-${SUDO_USER:-}}"
 
 remove() {
   [ -d "$G" ] || { echo "no gadget to remove"; return; }
@@ -65,6 +67,7 @@ ls /sys/class/udc | head -n1 > UDC
 # Let the app (running as a normal user) write the reports.
 for i in 0 1; do
   for _ in $(seq 20); do [ -e /dev/hidg$i ] && break; sleep 0.1; done
-  chown "$APP_USER" /dev/hidg$i && chmod 0660 /dev/hidg$i
+  if [ -n "$APP_USER" ]; then chown "$APP_USER" /dev/hidg$i; else chgrp plugdev /dev/hidg$i; fi
+  chmod 0660 /dev/hidg$i
 done
 echo "gadget up on $(cat UDC):"; ls -l /dev/hidg*

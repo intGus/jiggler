@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+# Set up the USB keyboard+mouse gadget (/dev/hidg0, /dev/hidg1) now and at every boot.
+if [ "$1" = "configure" ] && command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload || true
+    systemctl enable cp0-hid-gadget.service || true
+    systemctl restart cp0-hid-gadget.service || true
+fi
+exit 0

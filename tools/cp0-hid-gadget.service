@@ -6,9 +6,8 @@ Wants=sys-kernel-config.mount
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-Environment=APP_USER=intgus
-ExecStart=/usr/local/sbin/setup-hid-gadget.sh
-ExecStop=/usr/local/sbin/setup-hid-gadget.sh --remove
+ExecStart=/usr/lib/jiggler/setup-hid-gadget.sh
+ExecStop=/usr/lib/jiggler/setup-hid-gadget.sh --remove
 
 [Install]
 WantedBy=multi-user.target

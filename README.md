@@ -41,8 +41,8 @@
 </p>
 
 Built on the [CardputerZero Template](https://github.com/CardputerZero/Template) (LVGL + CMake, SDL desktop
-simulator, aarch64 device cross-build). CardputerZero has not shipped yet, so all development and testing so
-far has happened in the desktop simulator - see [Hardware Status](#hardware-status) below.
+simulator, aarch64 device cross-build). Tested on a real CardputerZero with Windows and macOS hosts - see
+[Hardware Status](#hardware-status) below.
 
 ## What It Does
 
@@ -74,8 +74,8 @@ the project's "never claim hardware success that didn't happen" rule (see below)
 - **Device build (`USE_DESKTOP=OFF`, `src/platform/jiggle_output.cpp`)**: writes standard USB HID
   boot-protocol reports directly to `/dev/hidg0` (keyboard, modifier-only pulse so nothing is actually
   typed) and `/dev/hidg1` (mouse, small relative move). This assumes the OS has already put the port in
-  Slave/Device mode and bound a composite HID gadget exposing those nodes - creating that ConfigFS gadget
-  is a privileged, system-level, one-time setup step that this app does not perform itself. If the nodes
+  Slave/Device mode and bound a composite HID gadget exposing those nodes - the app itself never runs as
+  root; the gadget is created at boot by the packaged `cp0-hid-gadget.service` (below). If the nodes
   are missing or not writable, the app reports that explicitly instead of pretending the jiggle worked.
 - **Tested on a real CardputerZero (2026-11-16)** against Windows and macOS hosts: the mouse jiggle
   moves the host pointer (12-24 px, then back) and the PC enumerates the device as a composite
@@ -83,15 +83,9 @@ the project's "never claim hardware success that didn't happen" rule (see below)
   to **Device**; that port also charges the Cardputer. The app shows this reminder for 6 s at start.
 - **Gadget setup** lives in `tools/`: `setup-hid-gadget.sh` creates `/dev/hidg0` (keyboard) and
   `/dev/hidg1` (mouse) through ConfigFS and hands them to the app user; `cp0-hid-gadget.service` runs
-  it at boot. Install once on the device:
-
-  ```shell
-  sudo install -m 755 tools/setup-hid-gadget.sh /usr/local/sbin/
-  sudo cp tools/cp0-hid-gadget.service /etc/systemd/system/
-  sudo systemctl daemon-reload && sudo systemctl enable --now cp0-hid-gadget
-  ```
-
-  The service sets `APP_USER=intgus`; change it to the user that runs the app.
+  it at boot. The `.deb` installs both (`/usr/lib/jiggler/`, `/usr/lib/systemd/system/`) and its
+  `postinst` enables the service, so nothing has to be set up by hand. The device nodes are given to
+  group `plugdev` (mode 0660), which the default CardputerZero user belongs to.
 - **Screen off while jiggling:** after 30 s without a key press the backlight turns off
   (`/sys/class/backlight/backlight/brightness`, writable by the `video` group). Any key turns it back
   on; that key press is swallowed so it never triggers its action. Brightness is restored on exit.
@@ -568,10 +562,9 @@ cmake --workflow --preset cp0-cross-package
 
 # Status
 
-This is an early, desktop-simulator-only build (see [Hardware Status](#hardware-status)). Planned next
-steps once CardputerZero hardware is available: verify the `/dev/hidg0`/`/dev/hidg1` output against a real
-HID gadget, confirm the actual host/slave USB mode switch mechanism, and re-check timing/interval feel on
-device.
+Version 0.1.0 works on real CardputerZero hardware (see [Hardware Status](#hardware-status)): mouse and
+keyboard output over the right-side USB port in Device mode, screen-off while jiggling, and the USB gadget
+set up automatically by the package at boot.
 
 # License
 

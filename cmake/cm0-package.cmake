@@ -13,9 +13,10 @@ set(APP_DEBIAN_ARCHITECTURE "arm64" CACHE STRING "Debian package architecture")
 # still a template/M5Stack identity, so set your own name and email here.
 set(APP_MAINTAINER "intGus <intgusd@gmail.com>" CACHE STRING "Debian package maintainer")
 set(APP_PACKAGE_DESCRIPTION "USB HID activity jiggler for CardputerZero" CACHE STRING "Debian package summary")
-# Jiggler is a normal foreground GUI app launched from APPLaunch, not a
-# background daemon, so it does not ship/enable a systemd autostart service.
-# Keep this in sync with app-builder.json's store.permissions.background_service.
+# Jiggler itself is a foreground GUI app launched from APPLaunch, so the app
+# has no autostart service. The package does ship cp0-hid-gadget.service, a
+# boot-time oneshot that creates the USB HID gadget (see below); that is why
+# app-builder.json declares store.permissions.background_service = true.
 set(APP_INSTALL_SYSTEMD_SERVICE OFF CACHE BOOL "Install a systemd service file for embedded deployments")
 
 set(APP_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/package")
@@ -69,6 +70,14 @@ if(APP_INSTALL_SYSTEMD_SERVICE)
     )
 endif()
 
+# USB HID gadget setup (root, at boot): creates /dev/hidg0 + /dev/hidg1.
+install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/tools/setup-hid-gadget.sh"
+    DESTINATION "lib/jiggler"
+)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/tools/cp0-hid-gadget.service"
+    DESTINATION "lib/systemd/system"
+)
+
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
     DESTINATION "${CMAKE_INSTALL_DOCDIR}"
 )
@@ -110,6 +119,15 @@ configure_file(
     "${APP_GENERATED_DIR}/conffiles"
     @ONLY
 )
-set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${APP_GENERATED_DIR}/conffiles")
+foreach(script postinst prerm postrm)
+    configure_file(
+        "${CMAKE_CURRENT_LIST_DIR}/templates/${script}.in"
+        "${APP_GENERATED_DIR}/${script}"
+        @ONLY
+        FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+    )
+endforeach()
+set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
+    "${APP_GENERATED_DIR}/conffiles;${APP_GENERATED_DIR}/postinst;${APP_GENERATED_DIR}/prerm;${APP_GENERATED_DIR}/postrm")
 
 include(CPack)
