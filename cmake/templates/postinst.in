@@ -2,8 +2,6 @@
 set -e
 # Set up the USB keyboard+mouse gadget (/dev/hidg0, /dev/hidg1) now and at every boot.
 if [ "$1" = "configure" ] && command -v systemctl >/dev/null 2>&1; then
-    # Clean up the pre-release unit name.
-    rm -f /etc/systemd/system/multi-user.target.wants/cp0-hid-gadget.service
     if command -v udevadm >/dev/null 2>&1; then
         udevadm control --reload-rules || true
     fi
