@@ -10,7 +10,7 @@
     />
   <img
     src="./screenshot/jiggler-light.png"
-    alt="Jiggler running in the desktop simulator"
+    alt="Jiggler running on a CardputerZero"
     width="320"
   />
   </picture>
@@ -127,7 +127,7 @@ Same small MVVM-style structure as the upstream template:
 │   ├── audio/              # Audio resources
 │   ├── fonts/              # TTF fonts loaded through FreeType
 │   └── images/             # Image resources
-├── screenshot/             # Simulator screenshots for supported desktop platforms
+├── screenshot/             # Screenshots captured on a real CardputerZero
 ├── src/
 │   ├── app/                # Application lifecycle, asset loading, screen management
 │   ├── config/             # LVGL config headers for desktop and device builds
