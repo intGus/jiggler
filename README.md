@@ -77,12 +77,24 @@ the project's "never claim hardware success that didn't happen" rule (see below)
   Slave/Device mode and bound a composite HID gadget exposing those nodes - creating that ConfigFS gadget
   is a privileged, system-level, one-time setup step that this app does not perform itself. If the nodes
   are missing or not writable, the app reports that explicitly instead of pretending the jiggle worked.
-- **This has not been exercised on real CardputerZero hardware** - the device is not released yet (still
-  in its Kickstarter campaign as of this writing). The device build has not even been cross-compiled and
-  run anywhere; only the desktop simulator has been built and interactively tested. Re-verify
-  `jiggle_output.cpp` against a real unit once available, in particular the exact HID gadget report
-  descriptor the OS ships (this app assumes the common 4-byte boot mouse report; adjust if the actual
-  gadget uses a different one).
+- **Tested on a real CardputerZero (2026-11-16)** against Windows and macOS hosts: the mouse jiggle
+  moves the host pointer (12-24 px, then back) and the PC enumerates the device as a composite
+  keyboard + mouse. Only the **right-side USB port** works as a device port, with the USB switch set
+  to **Device**; that port also charges the Cardputer. The app shows this reminder for 6 s at start.
+- **Gadget setup** lives in `tools/`: `setup-hid-gadget.sh` creates `/dev/hidg0` (keyboard) and
+  `/dev/hidg1` (mouse) through ConfigFS and hands them to the app user; `cp0-hid-gadget.service` runs
+  it at boot. Install once on the device:
+
+  ```shell
+  sudo install -m 755 tools/setup-hid-gadget.sh /usr/local/sbin/
+  sudo cp tools/cp0-hid-gadget.service /etc/systemd/system/
+  sudo systemctl daemon-reload && sudo systemctl enable --now cp0-hid-gadget
+  ```
+
+  The service sets `APP_USER=intgus`; change it to the user that runs the app.
+- **Screen off while jiggling:** after 30 s without a key press the backlight turns off
+  (`/sys/class/backlight/backlight/brightness`, writable by the `video` group). Any key turns it back
+  on; that key press is swallowed so it never triggers its action. Brightness is restored on exit.
 
 ## Project Overview
 

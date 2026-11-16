@@ -18,10 +18,13 @@
 #include "theme.h"
 #include "toast.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
+#include <thread>
 
 #if USE_DESKTOP
 #include "desktop_simulator_frame.h"
@@ -109,6 +112,33 @@ void persist_dark_mode_observer(lv_observer_t* observer, lv_subject_t* subject) 
     }
 }
 
+// Backlight control for the auto screen-off while jiggling. The backlight node
+// is group-writable by `video`, so no root is needed. Desktop builds are no-ops.
+constexpr const char* kBacklightPath = "/sys/class/backlight/backlight/brightness";
+constexpr uint32_t kScreenOffAfterMs = 30000;
+
+bool read_backlight(int& value) {
+#if USE_DESKTOP
+    (void)value;
+    return false;
+#else
+    std::ifstream in(kBacklightPath);
+    return static_cast<bool>(in >> value);
+#endif
+}
+
+bool write_backlight(int value) {
+#if USE_DESKTOP
+    (void)value;
+    return false;
+#else
+    std::ofstream out(kBacklightPath);
+    out << value;
+    out.flush();
+    return static_cast<bool>(out);
+#endif
+}
+
 class ShortcutController {
 public:
     ShortcutController(viewmodel::BaseViewModel& view_model, AssetManager& assets)
@@ -117,17 +147,77 @@ public:
           help_popup_(std::make_unique<view::widgets::HelpPopup>(lv_layer_top(), view_model, assets)) {
         toast_->build();
         help_popup_->build();
+        // Only the right-side port, in Device mode, can act as a USB mouse/keyboard.
+        toast_->show_highlighted("Set USB switch to ",
+                                 "Device",
+                                 " and use the right-side port",
+                                 view::widgets::ToastTone::Warning,
+                                 6000,
+                                 false);
         platform::set_global_key_listener(global_key_listener, this);
         platform::set_key_release_listener(key_release_listener, this);
+        last_key_tick_ = lv_tick_get();
+        screen_timer_ = lv_timer_create(screen_timer_cb, 1000, this);
     }
 
     ~ShortcutController() {
+        if (screen_timer_) {
+            lv_timer_delete(screen_timer_);
+        }
+        wake_screen(); // never leave the device with a dark screen
         platform::clear_key_release_listener(key_release_listener, this);
         platform::clear_global_key_listener(global_key_listener, this);
     }
 
 private:
+    // Screen off after kScreenOffAfterMs without key presses, only while
+    // jiggling. The key that wakes the screen is swallowed (press, long-press
+    // and release) so it never triggers its action, e.g. a held ESC quitting.
+    void check_screen_timeout() {
+        if (screen_off_ || !view_model_.is_jiggling()) {
+            return;
+        }
+        if (lv_tick_elaps(last_key_tick_) < kScreenOffAfterMs) {
+            return;
+        }
+        int current = 0;
+        if (!read_backlight(current)) {
+            return;
+        }
+        saved_brightness_ = current > 0 ? current : 100;
+        if (write_backlight(0)) {
+            screen_off_ = true;
+            LOG_INFO("screen off (idle while jiggling)");
+        }
+    }
+
+    void wake_screen() {
+        if (!screen_off_) {
+            return;
+        }
+        write_backlight(saved_brightness_);
+        screen_off_ = false;
+        LOG_INFO("screen on");
+    }
+
+    static void screen_timer_cb(lv_timer_t* timer) {
+        auto* controller = static_cast<ShortcutController*>(lv_timer_get_user_data(timer));
+        if (controller) {
+            controller->check_screen_timeout();
+        }
+    }
+
     bool handle_key(uint32_t key, bool long_pressed) {
+        last_key_tick_ = lv_tick_get();
+        if (screen_off_) {
+            wake_screen();
+            wake_key_ = key;
+            return true;
+        }
+        if (wake_key_ != 0 && key == wake_key_) {
+            return true; // long-press of the key that woke the screen
+        }
+
         if (key == platform::kKeyPrintScreen) {
             if (!long_pressed) {
                 const auto result = platform::screenshot::capture_active_screen();
@@ -197,6 +287,10 @@ private:
     }
 
     void handle_release(uint32_t key) {
+        if (wake_key_ != 0 && key == wake_key_) {
+            wake_key_ = 0;
+            return;
+        }
         if (key != exit_key_pressed_) {
             return;
         }
@@ -227,6 +321,11 @@ private:
     std::unique_ptr<view::widgets::Toast> toast_;
     std::unique_ptr<view::widgets::HelpPopup> help_popup_;
     uint32_t exit_key_pressed_{0};
+    lv_timer_t* screen_timer_{nullptr};
+    uint32_t last_key_tick_{0};
+    uint32_t wake_key_{0};
+    int saved_brightness_{100};
+    bool screen_off_{false};
     bool exit_armed_{false};
 };
 
@@ -338,8 +437,14 @@ int Application::run() {
            && simulator_frame.process_events()
 #endif
     ) {
-        lv_timer_handler();
-        lv_delay_ms(5);
+        // lv_delay_ms() busy-waits unless a delay callback is registered, which
+        // pinned a CPU core at 100% on the device. Sleep for real instead, for as
+        // long as LVGL says nothing is due (capped so key input stays responsive).
+        uint32_t idle_ms = lv_timer_handler();
+        if (idle_ms == LV_NO_TIMER_READY || idle_ms > 30) {
+            idle_ms = 30;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(idle_ms ? idle_ms : 1));
     }
 
     if (quit_observer) {

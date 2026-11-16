@@ -21,15 +21,13 @@ std::mt19937& shared_rng() {
     return rng;
 }
 
-// A small non-zero pixel offset so the move is visible to whatever is
-// watching for activity, without dragging the pointer across the screen.
+// A noticeable but short pointer offset (12-24 px per axis, random sign).
+// On real hosts with pointer acceleration a +/-4 move was barely one pixel.
 int nonzero_delta() {
-    std::uniform_int_distribution<int> distribution(-4, 4);
-    int value = 0;
-    do {
-        value = distribution(shared_rng());
-    } while (value == 0);
-    return value;
+    std::uniform_int_distribution<int> magnitude(12, 24);
+    std::bernoulli_distribution negative(0.5);
+    const int value = magnitude(shared_rng());
+    return negative(shared_rng()) ? -value : value;
 }
 
 #if USE_DESKTOP
@@ -114,7 +112,19 @@ bool send_mouse_jiggle(std::string& error) {
     const auto dx = static_cast<uint8_t>(static_cast<int8_t>(nonzero_delta()));
     const auto dy = static_cast<uint8_t>(static_cast<int8_t>(nonzero_delta()));
     const uint8_t report[4] = {0, dx, dy, 0};
-    return write_report(kMouseHidPath, report, sizeof(report), error);
+    if (!write_report(kMouseHidPath, report, sizeof(report), error)) {
+        return false;
+    }
+    // Move back after a short pause so the pointer does not drift away
+    // over many jiggles.
+    ::usleep(120 * 1000);
+    const uint8_t back[4] = {0,
+                             static_cast<uint8_t>(-static_cast<int8_t>(dx)),
+                             static_cast<uint8_t>(-static_cast<int8_t>(dy)),
+                             0};
+    std::string back_error;
+    write_report(kMouseHidPath, back, sizeof(back), back_error); // best-effort
+    return true;
 }
 
 bool send_keyboard_jiggle(std::string& error) {

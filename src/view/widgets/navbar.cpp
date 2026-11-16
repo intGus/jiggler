@@ -15,7 +15,11 @@
 namespace view::widgets {
 namespace {
 
-constexpr std::array<int32_t, 5> kNavButtonXOffsets = {30, 17, 2, -15, -30};
+// Buttons are 40px wide so 4-letter labels ("MODE", "STOP") are not clipped.
+// Offsets were tuned for 32px buttons; they are adjusted here so each
+// button's centre stays above the same physical key.
+constexpr int32_t kNavButtonWidth = 40;
+constexpr std::array<int32_t, 5> kNavButtonXOffsets = {26, 15, 2, -13, -26};
 
 } // namespace
 
@@ -63,7 +67,7 @@ void NavBar::create_icon_buttons() {
     // Deliberately not routed through assets_.load_standard_font(): that
     // resolves to a device-only Noto Sans CJK file and always falls back on
     // desktop builds, so its fallback size (14px) does not reliably fit
-    // 4-letter labels ("STOP", "MODE") in a 32px-wide nav button. This
+    // 4-letter labels ("STOP", "MODE") in a narrow nav button. This
     // built-in bitmap font is guaranteed present on both targets and small
     // enough to fit reliably.
     label_font_ = &lv_font_montserrat_12;
@@ -86,7 +90,7 @@ void NavBar::create_icon_buttons() {
         const lv_font_t* font = spec.use_icon_font ? icon_font_ : label_font_;
         icon_buttons_[i] = std::make_unique<IconButton>(core_obj_,
                                                         view_model_,
-                                                        32,
+                                                        kNavButtonWidth,
                                                         24,
                                                         spec.text,
                                                         font ? font : &lv_font_montserrat_14,
